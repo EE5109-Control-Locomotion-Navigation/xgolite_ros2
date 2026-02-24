@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  ros2-xgolite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ros2-xgolite-humble
+    container_name: ros2_xgolite
+    network_mode: host
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///etc/cyclonedds.xml
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=${XAUTHORITY:-/tmp/.Xauthority}
+    volumes:
+      - .:/workspaces/xgolite_ws:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-/tmp/.Xauthority}:/tmp/.Xauthority:rw
+      - /run/dbus:/run/dbus:ro
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/ttyACM1:/dev/ttyACM1
+    privileged: true
+    stdin_open: true
+    tty: true

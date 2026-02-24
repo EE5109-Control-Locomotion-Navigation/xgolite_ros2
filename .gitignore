@@ -1,0 +1,48 @@
+# ROS 2 colcon build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+*.so
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Docker
+.docker/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# ROS logs and bag files
+*.bag
+*.db3
+*.mcap
+~ros/
+
+# Compiled URDF / generated files
+*.urdf.xacro.generated
+
+# Credentials / secrets
+*.env
+.env.*
+!.env.example
