@@ -14,11 +14,13 @@ services:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
       - XAUTHORITY=${XAUTHORITY:-/tmp/.Xauthority}
+      - ROS_DOMAIN_ID=0
     volumes:
       - .:/workspaces/xgolite_ws:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-/tmp/.Xauthority}:/tmp/.Xauthority:rw
       - /run/dbus:/run/dbus:ro
+      - ./cyclonedds.xml:/etc/cyclonedds.xml
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
       - /dev/ttyUSB1:/dev/ttyUSB1

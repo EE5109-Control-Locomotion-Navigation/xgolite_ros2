@@ -1,0 +1,28 @@
+workspace_manager:
+  ros__parameters:
+
+    # ---------------------------------------------------------------
+    # TF frame published by the remote pi camera
+    # ---------------------------------------------------------------
+    camera_frame: "pi_camera"
+
+    # ---------------------------------------------------------------
+    # AprilTag configuration
+    # ---------------------------------------------------------------
+    tag_family: "tag36h11"
+
+    # IDs of the four workspace-boundary corner tags (in any order –
+    # the node will sort them CCW automatically).
+    tag_ids: [0, 1, 2, 3]
+
+    # Physical size of each marker (black square outer edge), metres.
+    tag_size_m: 0.07
+
+    # ---------------------------------------------------------------
+    # Node behaviour
+    # ---------------------------------------------------------------
+    # How often to look up TF and publish (Hz).
+    publish_rate_hz: 5.0
+
+    # Max time to wait for a TF lookup before giving up (seconds).
+    tf_timeout_s: 0.1

@@ -3,6 +3,7 @@
   <Domain id="any">
     <General>
       <AllowMulticast>true</AllowMulticast>
+      <NetworkInterfaceAddress>wlp4s0</NetworkInterfaceAddress>
     </General>
     <Discovery>
       <ParticipantIndex>auto</ParticipantIndex>

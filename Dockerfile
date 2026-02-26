@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-robot-state-publisher \
     ros-humble-teleop-twist-keyboard \
     ros-humble-teleop-twist-joy \
+    ros-humble-apriltag-ros \
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-vcstool \
@@ -19,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     setserial \
     minicom \
     screen \
+    net-tools \ 
+    iproute2 \
     python3-pip \
     libserial-dev \
     ros-humble-asio-cmake-module \
