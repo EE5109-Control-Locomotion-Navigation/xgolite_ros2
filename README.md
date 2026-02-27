@@ -114,7 +114,7 @@ Joystick input is handled directly by `xgo_bt_node.py` (`/joy` subscriber). The 
 
 | Input | Index | Action |
 |-------|-------|--------|
-| **BtnTL1** (hold) | button 4 | Enable walking mode |
+| **BtnTL1** (hold) | button 4 | Enable walking mode (uses current body attitude) |
 | Left stick ↕ | axis 1 | Forward / backward (vx) |
 | Left stick ↔ | axis 0 | Strafe left / right (vy) |
 | Right stick ↔ | axis 3 | Yaw / turn (vyaw) |
@@ -149,13 +149,25 @@ Height is preserved across pose-mode releases and is only reset to default (108 
 | Left Pad ↕ | axis 7 | Arm Z position ±10 units per press |
 | **BtnTL2** (trigger) | axis 2 | Toggle claw open / closed |
 
+### Attitude adjustment (BtnMode)
+
+| Input | Index | Action |
+|-------|-------|--------|
+| **BtnMode** | button 8 | Toggle attitude adjustment mode |
+| (when active) | — | Robot stationary; left stick = body x/y, right stick = roll/pitch |
+| Toggle off | — | Retained attitude is used when walking |
+
 ### Behaviour
 
 | Input | Index | Action |
 |-------|-------|--------|
+| **BtnA** | button 0 | Increase stride (pace: slow → normal → high) |
+| **BtnB** | button 1 | Decrease stride (pace: high → normal → slow) |
 | **BtnX** | button 2 | Cycle pace mode: normal → slow → high |
 | **BtnY** | button 3 | Cycle gait type: trot → walk → high walk |
 | **BtnStart** | button 7 | Reset robot to default pose |
+
+A full button/axis reference is in [joypad_mapping.md](joypad_mapping.md).
 
 ---
 
@@ -166,8 +178,24 @@ Height is preserved across pose-mode releases and is only reset to default (108 
 | `/joint_states` | `sensor_msgs/JointState` | All 15 servo angles + claw |
 | `/imu/data` | `sensor_msgs/Imu` | Roll, pitch, yaw orientation (quaternion) |
 | `/battery` | `sensor_msgs/BatteryState` | Battery percentage |
-| `/odom` | `nav_msgs/Odometry` | Dead-reckoning odometry |
+| `/odom` | `nav_msgs/Odometry` | Dead-reckoning odometry (position + orientation) |
 | TF `odom→base_link` | — | Transform integrated from velocity + IMU orientation |
+
+### imu_to_odom_node (optional)
+
+Converts IMU orientation into an Odometry message (orientation only, zero position/twist):
+
+```bash
+ros2 run xgo2_ros imu_to_odom_node
+```
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/odom_orientation` | `nav_msgs/Odometry` | Orientation from `/imu/data`; position and twist zeroed |
+
+Parameters: `imu_topic`, `odom_topic`, `frame_id`, `child_frame_id`.
+
+---
 
 ## Subscribed topics
 
@@ -201,13 +229,15 @@ xgolite_ws/
 ├── Dockerfile                  # ros:humble-desktop + bleak + joystick tools
 ├── entrypoint.sh               # Sources ROS 2 and workspace overlay
 ├── cyclonedds.xml              # CycloneDDS RMW config
+├── joypad_mapping.md           # Full joypad button/axis reference
 ├── xgolib.py                   # Upstream XGO Python library (reference)
 ├── xgolite_bt.py               # BLE comms prototype (reference)
 └── src/
     └── xgo_ros/                # xgo2_ros ROS 2 package
-        ├── CMakeLists.txt      # Installs xgo_bt_node.py as xgo2_ros_node
+        ├── CMakeLists.txt      # Installs nodes
         ├── src/
-        │   └── xgo_bt_node.py  # Main BLE controller node
+        │   ├── xgo_bt_node.py       # Main BLE controller node
+        │   └── imu_to_odom_node.py  # IMU → Odometry converter
         ├── launch/
         │   └── xgo_control_launch.py
         └── config/

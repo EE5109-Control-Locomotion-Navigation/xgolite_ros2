@@ -8,6 +8,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME xgo2_ros_node
 )
+install(PROGRAMS
+  src/imu_to_odom_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME imu_to_odom_node
+)
 
 install(DIRECTORY launch/
     DESTINATION share/${PROJECT_NAME}/launch

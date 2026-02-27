@@ -1,0 +1,44 @@
+# Tag configuration - override at launch: robot_tag_id:=5 tag_offset_z:=0.06 etc.
+# Static transform: base_link -> robot_tag (tag mount on robot).
+# Uses 'robot_tag' frame (not tag36h11:4) to avoid conflict with apriltag_ros which
+# publishes pi_camera -> tag36h11:4. Tag IDs 0-3 reserved for workspace corners.
+# Note: static_tf uses ros__parameters wrapper for valid ROS 2 params file format.
+static_tf:
+  ros__parameters:
+    base_link_to_tag:
+      x: 0.0
+      y: 0.0
+      z: 0.05
+      yaw: 0.0
+      pitch: 0.0
+      roll: 0.0
+
+localization_node:
+  ros__parameters:
+    map_frame: "workspace_origin"
+    camera_frame: "pi_camera"
+    tag_family: "tag36h11"
+    robot_tag_id: 4
+    tag_to_base_link_x: 0.0
+    tag_to_base_link_y: 0.0
+    tag_to_base_link_z: 0.0
+    map_resolution: 0.05
+    map_inflation_radius: 0.05
+    publish_rate_hz: 10.0
+
+astar_planner_node:
+  ros__parameters:
+    map_frame: "workspace_origin"
+
+pure_pursuit_node:
+  ros__parameters:
+    lookahead_distance: 0.15
+    max_linear_velocity: 0.25
+    max_angular_velocity: 1.2
+    goal_tolerance: 0.08
+    control_rate_hz: 20.0
+
+nav_orchestrator_node:
+  ros__parameters:
+    map_frame: "workspace_origin"
+    plan_tolerance: 0.5

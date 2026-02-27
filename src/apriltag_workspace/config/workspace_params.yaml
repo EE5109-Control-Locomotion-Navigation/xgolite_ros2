@@ -15,7 +15,8 @@ workspace_manager:
     # the node will sort them CCW automatically).
     tag_ids: [0, 1, 2, 3]
 
-    # Physical size of each marker (black square outer edge), metres.
+    # Physical size of corner tags 0-3 (black square outer edge), metres.
+    # Corner tags are 7cm; robot tag(s) are smaller and sized separately in apriltag_ros.
     tag_size_m: 0.07
 
     # ---------------------------------------------------------------

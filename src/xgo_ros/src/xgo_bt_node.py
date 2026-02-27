@@ -96,6 +96,7 @@ class XGOBTNode(Node):
         self._pace_index = 0
         self._claw_closed = False
         self._arm_mode = 0  # 0x00 or 0x01
+        self._attitude_adj_mode = False  # BtnMode toggle: adjust walking attitude while stationary
 
         # ----- robot state -----
         self._vx = 0.0
@@ -110,6 +111,7 @@ class XGOBTNode(Node):
         self._odom_x = 0.0
         self._odom_y = 0.0
         self._last_time = self.get_clock().now()
+        self._last_cmd_vel_time: rclpy.time.Time | None = None
 
         # ----- inbound packet state machine -----
         self._rx_flag = 0
@@ -326,12 +328,23 @@ class XGOBTNode(Node):
         self._send_read(0x01, 1)   # battery
         self._send_read(0x50, 15)  # joint angles (motor registers)
         self._send_read(0x62, 12)  # IMU: roll+pitch+yaw as 3 consecutive floats
-        # While BtnTL1 (button 4) is held, send speed at 10 Hz
-        if len(self._current_buttons) > 4 and self._current_buttons[4] == 1:
+        hold_walk = len(self._current_buttons) > 4 and self._current_buttons[4] == 1
+        hold_pose = len(self._current_buttons) > 5 and self._current_buttons[5] == 1
+        # Attitude adjustment mode (BtnMode): robot stationary, sticks set body pose for walking
+        if self._attitude_adj_mode:
+            self._send_body_pose()
+        # While BtnTL1 (button 4) is held, send speed and body pose at 10 Hz (maintain attitude)
+        elif hold_walk:
+            self._send_body_pose()
             self._send_speed()
         # While BtnTR1 (button 5) is held, send body pose at 10 Hz
-        elif len(self._current_buttons) > 5 and self._current_buttons[5] == 1:
+        elif hold_pose:
             self._send_body_pose()
+        # Autonomous: if cmd_vel received recently (e.g. from pure_pursuit), send speed at 10 Hz
+        elif self._last_cmd_vel_time is not None:
+            age = (self.get_clock().now() - self._last_cmd_vel_time).nanoseconds * 1e-9
+            if age < 0.5:
+                self._send_speed()
 
     def _send_speed(self):
         cfg = self._config
@@ -385,7 +398,7 @@ class XGOBTNode(Node):
         self._vx   = _limit(msg.linear.x,  -cfg['vx_max'],   cfg['vx_max'])
         self._vy   = _limit(msg.linear.y,  -cfg['vy_max'],   cfg['vy_max'])
         self._vyaw = _limit(msg.angular.z, -cfg['vyaw_max'], cfg['vyaw_max'])
-        self._send_speed()
+        self._last_cmd_vel_time = self.get_clock().now()
 
     def _body_pose_cb(self, msg: Pose):
         self._body_pose[0] += msg.position.x
@@ -469,6 +482,31 @@ class XGOBTNode(Node):
             self.get_logger().info(f'BtnX pressed — switching pace to: {pace}')
             self._send_pace(pace)
 
+        # BtnA = button 0 — increase stride length (pace: slow → normal → high)
+        if len(buttons) > 0 and buttons[0] == 1 and (len(prev) <= 0 or prev[0] == 0):
+            if self._pace_index < len(self._pace_modes) - 1:
+                self._pace_index += 1
+                pace = self._pace_modes[self._pace_index]
+                self.get_logger().info(f'BtnA pressed — stride up: {pace}')
+                self._send_pace(pace)
+        # BtnB = button 1 — decrease stride length
+        if len(buttons) > 1 and buttons[1] == 1 and (len(prev) <= 1 or prev[1] == 0):
+            if self._pace_index > 0:
+                self._pace_index -= 1
+                pace = self._pace_modes[self._pace_index]
+                self.get_logger().info(f'BtnB pressed — stride down: {pace}')
+                self._send_pace(pace)
+
+        # BtnMode = button index 8 — toggle attitude adjustment mode (robot stationary, sticks set pose)
+        if len(buttons) > 8 and buttons[8] == 1 and (len(prev) <= 8 or prev[8] == 0):
+            self._attitude_adj_mode = not self._attitude_adj_mode
+            if self._attitude_adj_mode:
+                self._vx = self._vy = self._vyaw = 0.0
+                self._send_speed()  # stop any motion
+                self.get_logger().info('BtnMode: attitude adjustment ON — use sticks to set pose.')
+            else:
+                self.get_logger().info('BtnMode: attitude adjustment OFF — new pose retained for walking.')
+
         # BtnThumbL (9) / BtnThumbR (10) — raise / lower body height (translation z)
         _HEIGHT_STEP = 5.0
         if len(self._config['body_limit']) > 2:
@@ -483,13 +521,28 @@ class XGOBTNode(Node):
                 self._send_body_pose()
 
         # BtnTL1 (button 4) held — left stick drives vx/vy, right stick drives vyaw
+        # Ignored when in attitude adjustment mode (robot stays stationary)
         # Values updated here; _poll_state() transmits at 10 Hz to avoid flooding BLE
-        if hold_walk and len(axes) > 3:
+        if self._attitude_adj_mode and len(axes) > 4:
+            body_limit = self._config['body_limit']
+
+            def _scale(stick_val: float, limits) -> float:
+                mid = (limits[0] + limits[1]) / 2.0
+                half = (limits[1] - limits[0]) / 2.0
+                return mid + stick_val * half
+
+            # Left stick: axis 0 (L-R) → body y, axis 1 (U-D) → body x
+            self._body_pose[0] = _scale(axes[1], body_limit[0])
+            self._body_pose[1] = _scale(axes[0], body_limit[1])
+            # Right stick: axis 3 (L-R) → roll, axis 4 (U-D) → pitch
+            self._body_pose[3] = _scale(axes[3], body_limit[3])
+            self._body_pose[4] = _scale(axes[4], body_limit[4])
+        elif hold_walk and len(axes) > 3 and not self._attitude_adj_mode:
             cfg = self._config
             self._vx   = _limit(-axes[1], -cfg['vx_max'],   cfg['vx_max'])
             self._vy   = _limit( axes[0], -cfg['vy_max'],   cfg['vy_max'])
             self._vyaw = _limit( axes[3], -cfg['vyaw_max'], cfg['vyaw_max'])
-        elif prev_walk and not hold_walk:
+        elif prev_walk and not hold_walk and not self._attitude_adj_mode:
             # Button released — stop movement
             self._vx = self._vy = self._vyaw = 0.0
             self._send_speed()
