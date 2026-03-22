@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-teleop-twist-keyboard \
     ros-humble-teleop-twist-joy \
     ros-humble-apriltag-ros \
+    ros-humble-usb-cam \
+    ros-humble-cv-bridge \
+    python3-opencv \
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-vcstool \

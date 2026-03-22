@@ -26,6 +26,10 @@ services:
       - /dev/ttyUSB1:/dev/ttyUSB1
       - /dev/ttyACM0:/dev/ttyACM0
       - /dev/ttyACM1:/dev/ttyACM1
+      # Webcam / Iriun: uncomment the node(s) from `v4l2-ctl --list-devices` on the host.
+      # Without this, /dev/videoN may be missing inside the container despite privileged: true.
+      - /dev/video0:/dev/video0
+      - /dev/video2:/dev/video2
     privileged: true
     stdin_open: true
     tty: true

@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'workspace_manager = apriltag_workspace.workspace_node:main',
+            'v4l2_opencv_cam = apriltag_workspace.v4l2_opencv_cam_node:main',
         ],
     },
 )

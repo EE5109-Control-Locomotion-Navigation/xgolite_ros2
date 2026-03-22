@@ -6,6 +6,10 @@ Starts the workspace_manager node and (optionally) an RViz2 instance.
 Usage:
   ros2 launch apriltag_workspace workspace_launch.py
   ros2 launch apriltag_workspace workspace_launch.py rviz:=false
+
+  # Local phone-as-webcam (Iriun) + apriltag_ros (separate terminal), then this launch:
+  # ros2 launch apriltag_workspace usb_cam_apriltag_launch.py video_device:=/dev/videoN
+  # (default camera_driver:=opencv for virtual cams like Iriun; use usb_cam if V4L2 enum works)
 """
 
 import os

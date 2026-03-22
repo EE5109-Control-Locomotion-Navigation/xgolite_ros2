@@ -1,0 +1,26 @@
+# AprilTag params aligned with workspace_params.yaml / nav_params.yaml:
+# corners 0–3 at 0.07 m, robot tag 4 smaller (adjust if your print differs).
+/**:
+  ros__parameters:
+    image_transport: raw
+    family: 36h11
+    size: 0.07
+    max_hamming: 0
+    detector:
+      threads: 2
+      decimate: 2.0
+      blur: 0.0
+      refine: true
+      sharpening: 0.25
+      debug: false
+    pose_estimation_method: pnp
+    tag:
+      ids: [0, 1, 2, 3, 4]
+      # Same length as ids (empty [] is rejected by apriltag_ros on Humble).
+      frames:
+        - 'tag36h11:0'
+        - 'tag36h11:1'
+        - 'tag36h11:2'
+        - 'tag36h11:3'
+        - 'tag36h11:4'
+      sizes: [0.07, 0.07, 0.07, 0.07, 0.05]

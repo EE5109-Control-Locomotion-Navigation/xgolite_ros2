@@ -106,6 +106,91 @@ ros2 launch xgo2_ros xgo_control_launch.py joy_dev:=/dev/input/js1
 
 ---
 
+## Local webcam and AprilTags
+
+The `apriltag_workspace` package can build the **workspace boundary** and TF tree from a camera on your machine instead of a remote Raspberry Pi. Any **V4L2** video device works: a USB webcam, a laptop built-in camera, or a **phone used as a webcam** (see Iriun below).
+
+### Example: Iriun (phone as webcam)
+
+[Iriun Webcam](https://iriun.com/) is a common way to use an **Android or iPhone as a webcam** on Linux:
+
+1. Install **Iriun Webcam** on the phone and on the PC (same Wi‑Fi or USB, per Iriun’s docs).
+2. Start the stream so the PC sees a **virtual camera**. On Linux this appears as a **`/dev/videoN`** node (the index varies; use the steps below to find it).
+
+This repository does not depend on Iriun specifically—it is only an example of a virtual V4L2 device.
+
+### Find your video device
+
+On the **host** (or inside the container, after device passthrough):
+
+```bash
+sudo apt install v4l-utils   # if needed
+v4l2-ctl --list-devices
+ls -l /dev/video*
+```
+
+Pick the device that corresponds to Iriun or your physical webcam (often `/dev/video0`; Iriun sometimes shows up as another number). Use that path in the launch command.
+
+### Docker: pass `/dev/video` into the container
+
+Compose only maps specific devices by default. If `/dev/video0` (or another node) is **missing inside the container**, uncomment the matching line(s) under `services.ros2-xgolite.devices` in [`docker-compose.yml`](docker-compose.yml), for example:
+
+```yaml
+      - /dev/video0:/dev/video0
+```
+
+Recreate the container after editing. With `privileged: true`, some setups still need this explicit mapping for video nodes.
+
+### Install dependencies (inside the workspace environment)
+
+The Docker image includes `apriltag_ros`, `usb_cam`, `cv_bridge`, and `python3-opencv`. On a bare host you will need at least:
+
+```bash
+sudo apt install ros-humble-apriltag-ros ros-humble-cv-bridge python3-opencv
+# optional, only if you use camera_driver:=usb_cam
+sudo apt install ros-humble-usb-cam
+```
+
+### Build the package
+
+```bash
+cd /workspaces/xgolite_ws   # or your workspace root
+colcon build --packages-select apriltag_workspace --symlink-install
+source install/setup.bash
+```
+
+### Launch camera + AprilTag detection
+
+This starts **`v4l2_opencv_cam`** (default) and **`apriltag_node`**, publishing TF **`pi_camera` → `tag36h11:*`** and image topics under `/usb_cam/…`.
+
+```bash
+ros2 launch apriltag_workspace usb_cam_apriltag_launch.py video_device:=/dev/video0
+```
+
+**Parameters you may need:**
+
+| Argument | Purpose |
+|----------|---------|
+| `video_device:=/dev/videoN` | V4L2 device path (adjust `N` to match `v4l2-ctl`) |
+| `camera_driver:=opencv` | Default. OpenCV capture; works well with **virtual webcams** whose drivers confuse `usb_cam`. |
+| `camera_driver:=usb_cam` | Use `ros-humble-usb_cam` instead (when the camera enumerates discrete V4L frame intervals). |
+| `image_width` / `image_height` | Must match the negotiated resolution and [`camera_info_iriun_approx.yaml`](src/apriltag_workspace/config/camera_info_iriun_approx.yaml) (or your own calibration file). |
+
+In a **second terminal** (same ROS domain):
+
+```bash
+source install/setup.bash
+ros2 launch apriltag_workspace workspace_launch.py
+```
+
+That runs **`workspace_manager`**, which consumes the tag TFs and publishes `/workspace/boundary`, markers, etc. Downstream navigation (`xgolite_nav`) still expects this camera/apriltag stack to be running alongside it.
+
+### Camera calibration
+
+[`camera_info_iriun_approx.yaml`](src/apriltag_workspace/config/camera_info_iriun_approx.yaml) uses **placeholder intrinsics** for 1280×720. Detection will run, but tag poses are much more trustworthy after you run the standard ROS **camera calibration** workflow and point the launch file or node at the resulting `camera_info`.
+
+---
+
 ## Joystick control
 
 Joystick input is handled directly by `xgo_bt_node.py` (`/joy` subscriber). The mapping assumes an Xbox-style controller; run `jstest /dev/input/js0` inside the container to verify your controller's indices.
@@ -225,23 +310,29 @@ Parameters: `imu_topic`, `odom_topic`, `frame_id`, `child_frame_id`.
 
 ```
 xgolite_ws/
-├── docker-compose.yml          # Container definition
-├── Dockerfile                  # ros:humble-desktop + bleak + joystick tools
+├── docker-compose.yml          # Container definition (+ optional /dev/video* hints)
+├── Dockerfile                  # ros:humble-desktop + bleak + joystick + apriltag/usb_cam/opencv
 ├── entrypoint.sh               # Sources ROS 2 and workspace overlay
 ├── cyclonedds.xml              # CycloneDDS RMW config
 ├── joypad_mapping.md           # Full joypad button/axis reference
 ├── xgolib.py                   # Upstream XGO Python library (reference)
 ├── xgolite_bt.py               # BLE comms prototype (reference)
 └── src/
-    └── xgo_ros/                # xgo2_ros ROS 2 package
-        ├── CMakeLists.txt      # Installs nodes
-        ├── src/
-        │   ├── xgo_bt_node.py       # Main BLE controller node
-        │   └── imu_to_odom_node.py  # IMU → Odometry converter
-        ├── launch/
-        │   └── xgo_control_launch.py
-        └── config/
-            └── config.json
+    ├── xgo_ros/                # xgo2_ros ROS 2 package
+    │   ├── CMakeLists.txt      # Installs nodes
+    │   ├── src/
+    │   │   ├── xgo_bt_node.py       # Main BLE controller node
+    │   │   └── imu_to_odom_node.py  # IMU → Odometry converter
+    │   ├── launch/
+    │   │   └── xgo_control_launch.py
+    │   └── config/
+    │       └── config.json
+    ├── apriltag_workspace/     # Workspace boundary from AprilTags + local webcam launch
+    │   ├── launch/
+    │   │   ├── workspace_launch.py
+    │   │   └── usb_cam_apriltag_launch.py
+    │   └── config/
+    └── xgolite_nav/            # Localization / planning (expects camera TF + boundary)
 ```
 
 ---
