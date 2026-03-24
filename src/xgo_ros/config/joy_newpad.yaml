@@ -1,0 +1,18 @@
+joy_node:
+  ros__parameters:
+    dev: /dev/input/js0
+    autorepeat_rate: 20.0
+    deadzone: 0.1
+
+teleop_twist_joy:
+  ros__parameters:
+    # New joypad profile:
+    # - TL1/LB remains safety enable.
+    # - Right stick horizontal/vertical are swapped vs original profile.
+    axis_linear.x: 1
+    axis_linear.y: 0
+    axis_angular.yaw: 4
+    scale_linear.x: 0.3
+    scale_linear.y: 0.2
+    scale_angular.yaw: 1.2
+    enable_button: 4

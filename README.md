@@ -94,14 +94,17 @@ source install/setup.bash
 ### 5. Launch
 
 ```bash
-# Full stack: xgo node + joy driver + teleop
-ros2 launch xgo2_ros xgo_control_launch.py
+# Full stack: xgo node + joy driver + teleop (wireless gamepad profile)
+ros2 launch xgo2_ros xgo_control_launch.py joypad_profile:=classic
+
+# Full stack: wired USB controller profile
+ros2 launch xgo2_ros xgo_control_launch.py joypad_profile:=newpad
 
 # Without joystick
 ros2 launch xgo2_ros xgo_control_launch.py use_joy:=false
 
 # Different joystick device
-ros2 launch xgo2_ros xgo_control_launch.py joy_dev:=/dev/input/js1
+ros2 launch xgo2_ros xgo_control_launch.py joypad_profile:=newpad joy_dev:=/dev/input/js1
 ```
 
 ---
@@ -194,6 +197,13 @@ That runs **`workspace_manager`**, which consumes the tag TFs and publishes `/wo
 ## Joystick control
 
 Joystick input is handled directly by `xgo_bt_node.py` (`/joy` subscriber). The mapping assumes an Xbox-style controller; run `jstest /dev/input/js0` inside the container to verify your controller's indices.
+
+### Joypad profiles
+
+- `joypad_profile:=classic` is the original mapping for **wireless gamepads**.
+- `joypad_profile:=newpad` is the mapping for **wired USB controllers**.
+- `newpad` uses a **simplified control set** relative to `classic` to reduce accidental activations on some wired controllers.
+- Both profiles are supported by the same launch file and are selected at runtime.
 
 ### Walking (hold BtnTL1 to activate)
 

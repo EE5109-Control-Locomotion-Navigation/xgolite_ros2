@@ -84,6 +84,34 @@ class XGOBTNode(Node):
         self.declare_parameter('config_path', '')
         config_path = self.get_parameter('config_path').get_parameter_value().string_value
         self._config = self._load_config(config_path)
+        # Right-stick mapping is configurable to support different joypads.
+        self.declare_parameter('right_stick_h_axis', 3)
+        self.declare_parameter('right_stick_v_axis', 4)
+        self.declare_parameter('walk_yaw_axis', 3)
+        self.declare_parameter('walk_yaw_sign', 1.0)
+        self.declare_parameter('joypad_profile', 'classic')
+        self.declare_parameter('pose_swap_roll_pitch', False)
+        self.declare_parameter('pose_roll_sign', 1.0)
+        self.declare_parameter('walk_button_index', 4)
+        self.declare_parameter('pose_button_index', 5)
+        self.declare_parameter('tl2_axis_index', 2)
+        self.declare_parameter('tl2_button_index', -1)
+        self.declare_parameter('tr2_button_index', 7)
+        self._right_stick_h_axis = int(self.get_parameter('right_stick_h_axis').value)
+        self._right_stick_v_axis = int(self.get_parameter('right_stick_v_axis').value)
+        self._walk_yaw_axis = int(self.get_parameter('walk_yaw_axis').value)
+        self._walk_yaw_sign = float(self.get_parameter('walk_yaw_sign').value)
+        self._joypad_profile = str(self.get_parameter('joypad_profile').value).lower()
+        pose_swap_roll_pitch = self.get_parameter('pose_swap_roll_pitch').value
+        if isinstance(pose_swap_roll_pitch, str):
+            pose_swap_roll_pitch = pose_swap_roll_pitch.lower() in ('1', 'true', 'yes', 'y', 'on')
+        self._pose_swap_roll_pitch = bool(pose_swap_roll_pitch)
+        self._pose_roll_sign = float(self.get_parameter('pose_roll_sign').value)
+        self._walk_button_index = int(self.get_parameter('walk_button_index').value)
+        self._pose_button_index = int(self.get_parameter('pose_button_index').value)
+        self._tl2_axis_index = int(self.get_parameter('tl2_axis_index').value)
+        self._tl2_button_index = int(self.get_parameter('tl2_button_index').value)
+        self._tr2_button_index = int(self.get_parameter('tr2_button_index').value)
 
         # ----- joystick state -----
         self._prev_buttons = []
@@ -328,8 +356,14 @@ class XGOBTNode(Node):
         self._send_read(0x01, 1)   # battery
         self._send_read(0x50, 15)  # joint angles (motor registers)
         self._send_read(0x62, 12)  # IMU: roll+pitch+yaw as 3 consecutive floats
-        hold_walk = len(self._current_buttons) > 4 and self._current_buttons[4] == 1
-        hold_pose = len(self._current_buttons) > 5 and self._current_buttons[5] == 1
+        hold_walk = (
+            len(self._current_buttons) > self._walk_button_index
+            and self._current_buttons[self._walk_button_index] == 1
+        )
+        hold_pose = (
+            len(self._current_buttons) > self._pose_button_index
+            and self._current_buttons[self._pose_button_index] == 1
+        )
         # Attitude adjustment mode (BtnMode): robot stationary, sticks set body pose for walking
         if self._attitude_adj_mode:
             self._send_body_pose()
@@ -426,13 +460,28 @@ class XGOBTNode(Node):
         _TRIGGER = 0.5  # threshold: trigger axis > this = pressed (axis goes -1.0→+1.0)
         _PAD_STEP = 10.0  # arm position step per d-pad press (physical units)
 
-        hold_walk = len(buttons) > 4 and buttons[4] == 1  # BtnTL1
-        hold_pose = len(buttons) > 5 and buttons[5] == 1  # BtnTR1
-        prev_walk = len(prev) > 4 and prev[4] == 1
-        prev_pose = len(prev) > 5 and prev[5] == 1
+        hold_walk = (
+            len(buttons) > self._walk_button_index
+            and buttons[self._walk_button_index] == 1
+        )  # BtnTL1
+        hold_pose = (
+            len(buttons) > self._pose_button_index
+            and buttons[self._pose_button_index] == 1
+        )  # BtnTR1
+        prev_walk = (
+            len(prev) > self._walk_button_index
+            and prev[self._walk_button_index] == 1
+        )
+        prev_pose = (
+            len(prev) > self._pose_button_index
+            and prev[self._pose_button_index] == 1
+        )
+        suppress_button_actions = (
+            self._joypad_profile == 'newpad' and (hold_walk or hold_pose)
+        )
 
         # BtnSelect (button 6) rising edge — toggle arm mode (register 0x72)
-        if len(buttons) > 6 and buttons[6] == 1 and (len(prev) <= 6 or prev[6] == 0):
+        if (not suppress_button_actions) and len(buttons) > 6 and buttons[6] == 1 and (len(prev) <= 6 or prev[6] == 0):
             self._arm_mode = 1 - self._arm_mode
             self.get_logger().info(f'BtnSelect pressed — arm mode {self._arm_mode}.')
             self._send_arm_mode()
@@ -454,9 +503,35 @@ class XGOBTNode(Node):
                                            arm_limit[1][0], arm_limit[1][1])
                 self._send_arm_pose()
 
-        # BtnTL2 trigger (axis 2) rising edge — toggle claw
-        tl2_now = len(axes) > 2 and axes[2] > _TRIGGER
-        tl2_was = len(prev_axes) > 2 and prev_axes[2] > _TRIGGER
+        # Right-stick values for pose/attitude handling.
+        right_h_val = axes[self._right_stick_h_axis] if len(axes) > self._right_stick_h_axis else 0.0
+        right_v_val = axes[self._right_stick_v_axis] if len(axes) > self._right_stick_v_axis else 0.0
+        if self._pose_swap_roll_pitch:
+            right_h_val, right_v_val = right_v_val, right_h_val
+        right_h_val *= self._pose_roll_sign
+
+        # BtnTL2 rising edge — toggle claw.
+        # Supports axis-based triggers (classic pads) and button-based TL2 (newpad).
+        if self._tl2_button_index >= 0:
+            tl2_now = (
+                len(buttons) > self._tl2_button_index
+                and buttons[self._tl2_button_index] == 1
+            )
+            tl2_was = (
+                len(prev) > self._tl2_button_index
+                and prev[self._tl2_button_index] == 1
+            )
+        else:
+            tl2_now = (
+                self._tl2_axis_index >= 0
+                and len(axes) > self._tl2_axis_index
+                and axes[self._tl2_axis_index] > _TRIGGER
+            )
+            tl2_was = (
+                self._tl2_axis_index >= 0
+                and len(prev_axes) > self._tl2_axis_index
+                and prev_axes[self._tl2_axis_index] > _TRIGGER
+            )
         if tl2_now and not tl2_was:
             self._claw_closed = not self._claw_closed
             state = 'closed' if self._claw_closed else 'open'
@@ -464,33 +539,33 @@ class XGOBTNode(Node):
             self._send_claw()
 
         # BtnStart = button index 7 — trigger on rising edge (press, not hold)
-        if len(buttons) > 7 and buttons[7] == 1 and (len(prev) <= 7 or prev[7] == 0):
+        if (not suppress_button_actions) and len(buttons) > 7 and buttons[7] == 1 and (len(prev) <= 7 or prev[7] == 0):
             self.get_logger().info('BtnStart pressed — resetting robot.')
             self._reset()
 
         # BtnY = button index 3 — cycle through gait types
-        if len(buttons) > 3 and buttons[3] == 1 and (len(prev) <= 3 or prev[3] == 0):
+        if (not suppress_button_actions) and len(buttons) > 3 and buttons[3] == 1 and (len(prev) <= 3 or prev[3] == 0):
             self._gait_index = (self._gait_index + 1) % len(self._gait_types)
             gait = self._gait_types[self._gait_index]
             self.get_logger().info(f'BtnY pressed — switching gait to: {gait}')
             self._send_gait_type(gait)
 
         # BtnX = button index 2 — cycle through pace modes
-        if len(buttons) > 2 and buttons[2] == 1 and (len(prev) <= 2 or prev[2] == 0):
+        if (not suppress_button_actions) and len(buttons) > 2 and buttons[2] == 1 and (len(prev) <= 2 or prev[2] == 0):
             self._pace_index = (self._pace_index + 1) % len(self._pace_modes)
             pace = self._pace_modes[self._pace_index]
             self.get_logger().info(f'BtnX pressed — switching pace to: {pace}')
             self._send_pace(pace)
 
         # BtnA = button 0 — increase stride length (pace: slow → normal → high)
-        if len(buttons) > 0 and buttons[0] == 1 and (len(prev) <= 0 or prev[0] == 0):
+        if (not suppress_button_actions) and len(buttons) > 0 and buttons[0] == 1 and (len(prev) <= 0 or prev[0] == 0):
             if self._pace_index < len(self._pace_modes) - 1:
                 self._pace_index += 1
                 pace = self._pace_modes[self._pace_index]
                 self.get_logger().info(f'BtnA pressed — stride up: {pace}')
                 self._send_pace(pace)
         # BtnB = button 1 — decrease stride length
-        if len(buttons) > 1 and buttons[1] == 1 and (len(prev) <= 1 or prev[1] == 0):
+        if (not suppress_button_actions) and len(buttons) > 1 and buttons[1] == 1 and (len(prev) <= 1 or prev[1] == 0):
             if self._pace_index > 0:
                 self._pace_index -= 1
                 pace = self._pace_modes[self._pace_index]
@@ -498,7 +573,7 @@ class XGOBTNode(Node):
                 self._send_pace(pace)
 
         # BtnMode = button index 8 — toggle attitude adjustment mode (robot stationary, sticks set pose)
-        if len(buttons) > 8 and buttons[8] == 1 and (len(prev) <= 8 or prev[8] == 0):
+        if (not suppress_button_actions) and len(buttons) > 8 and buttons[8] == 1 and (len(prev) <= 8 or prev[8] == 0):
             self._attitude_adj_mode = not self._attitude_adj_mode
             if self._attitude_adj_mode:
                 self._vx = self._vy = self._vyaw = 0.0
@@ -509,7 +584,7 @@ class XGOBTNode(Node):
 
         # BtnThumbL (9) / BtnThumbR (10) — raise / lower body height (translation z)
         _HEIGHT_STEP = 5.0
-        if len(self._config['body_limit']) > 2:
+        if (not suppress_button_actions) and len(self._config['body_limit']) > 2:
             z_min, z_max = self._config['body_limit'][2][0], self._config['body_limit'][2][1]
             if len(buttons) > 9 and buttons[9] == 1 and (len(prev) <= 9 or prev[9] == 0):
                 self._body_pose[2] = _limit(self._body_pose[2] + _HEIGHT_STEP, z_min, z_max)
@@ -523,7 +598,7 @@ class XGOBTNode(Node):
         # BtnTL1 (button 4) held — left stick drives vx/vy, right stick drives vyaw
         # Ignored when in attitude adjustment mode (robot stays stationary)
         # Values updated here; _poll_state() transmits at 10 Hz to avoid flooding BLE
-        if self._attitude_adj_mode and len(axes) > 4:
+        if self._attitude_adj_mode:
             body_limit = self._config['body_limit']
 
             def _scale(stick_val: float, limits) -> float:
@@ -535,13 +610,14 @@ class XGOBTNode(Node):
             self._body_pose[0] = _scale(axes[1], body_limit[0])
             self._body_pose[1] = _scale(axes[0], body_limit[1])
             # Right stick: axis 3 (L-R) → roll, axis 4 (U-D) → pitch
-            self._body_pose[3] = _scale(axes[3], body_limit[3])
-            self._body_pose[4] = _scale(axes[4], body_limit[4])
-        elif hold_walk and len(axes) > 3 and not self._attitude_adj_mode:
+            self._body_pose[3] = _scale(right_h_val, body_limit[3])
+            self._body_pose[4] = _scale(right_v_val, body_limit[4])
+        elif hold_walk and not self._attitude_adj_mode:
             cfg = self._config
             self._vx   = _limit(-axes[1], -cfg['vx_max'],   cfg['vx_max'])
             self._vy   = _limit( axes[0], -cfg['vy_max'],   cfg['vy_max'])
-            self._vyaw = _limit( axes[3], -cfg['vyaw_max'], cfg['vyaw_max'])
+            yaw_val = axes[self._walk_yaw_axis] if len(axes) > self._walk_yaw_axis else 0.0
+            self._vyaw = _limit(self._walk_yaw_sign * yaw_val, -cfg['vyaw_max'], cfg['vyaw_max'])
         elif prev_walk and not hold_walk and not self._attitude_adj_mode:
             # Button released — stop movement
             self._vx = self._vy = self._vyaw = 0.0
@@ -549,7 +625,7 @@ class XGOBTNode(Node):
 
         # BtnTR1 (button 5) held — left stick controls body translation, right stick controls attitude
         # Mutually exclusive with walk mode; _poll_state() transmits at 10 Hz to avoid flooding BLE
-        elif hold_pose and len(axes) > 4:
+        elif hold_pose:
             body_limit = self._config['body_limit']
 
             def _scale(stick_val: float, limits) -> float:
@@ -561,8 +637,8 @@ class XGOBTNode(Node):
             self._body_pose[0] = _scale( axes[1], body_limit[0])
             self._body_pose[1] = _scale( axes[0], body_limit[1])
             # Right stick: axis 3 (L-R) → roll, axis 4 (U-D) → pitch
-            self._body_pose[3] = _scale( axes[3], body_limit[3])
-            self._body_pose[4] = _scale( axes[4], body_limit[4])
+            self._body_pose[3] = _scale(right_h_val, body_limit[3])
+            self._body_pose[4] = _scale(right_v_val, body_limit[4])
         elif prev_pose and not hold_pose:
             # Button released — reset body pose to neutral, preserving current height
             self._body_pose = [0.0, 0.0, self._body_pose[2], 0.0, 0.0, 0.0]
