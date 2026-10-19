@@ -13,6 +13,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME imu_to_odom_node
 )
+install(PROGRAMS
+  src/xgo_gait_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME xgo_gait_node
+)
 
 install(DIRECTORY launch/
     DESTINATION share/${PROJECT_NAME}/launch

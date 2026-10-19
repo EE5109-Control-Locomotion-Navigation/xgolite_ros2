@@ -65,7 +65,7 @@ Edit `src/xgo_ros/config/config.json` and set `bt_address` to match your robot:
 
 ```json
 {
-    "bt_address": "88:57:21:92:73:02",
+    "bt_address": "38:18:2B:4F:E9:DA",
     ...
 }
 ```

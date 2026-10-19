@@ -1,7 +1,7 @@
 import asyncio
 from bleak import BleakClient
 
-ADDRESS = "88:57:21:92:73:02"
+ADDRESS = "38:18:2B:4F:E9:DA"
 CHAR_WRITE = "0000fff2-0000-1000-8000-00805f9b34fb"
 
 def create_packet(order_byte, value_bytes):
